@@ -115,32 +115,34 @@ const SchemaSelectorPanel = ({
         )}
       </div>
 
-      {/* Inline styles for custom scrollbar */}
-      <style jsx>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 6px;
-        }
+      {/* ✅ FIXED: remove 'jsx' attribute */}
+      <style>
+        {`
+          .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+          }
 
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: #1a1d26;
-          border-radius: 3px;
-        }
+          .custom-scrollbar::-webkit-scrollbar-track {
+            background: #1a1d26;
+            border-radius: 3px;
+          }
 
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #2a2e35;
-          border-radius: 3px;
-        }
+          .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #2a2e35;
+            border-radius: 3px;
+          }
 
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: #f7c800;
-        }
+          .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #f7c800;
+          }
 
-        /* Firefox */
-        .custom-scrollbar {
-          scrollbar-width: thin;
-          scrollbar-color: #2a2e35 #1a1d26;
-        }
-      `}</style>
+          /* Firefox */
+          .custom-scrollbar {
+            scrollbar-width: thin;
+            scrollbar-color: #2a2e35 #1a1d26;
+          }
+        `}
+      </style>
     </div>
   );
 };

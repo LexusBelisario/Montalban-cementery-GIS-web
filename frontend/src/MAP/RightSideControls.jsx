@@ -8,11 +8,13 @@ import {
   Satellite,
   MapPinned,
   Paintbrush,
+  ArrowUpDown,
 } from "lucide-react";
 import { useSchema } from "./SchemaContext.jsx";
 import AdminBoundariesPanel from "./AdminBoundaries/AdminBoundariesPanel.jsx";
 import SchemaSelectorPanel from "./SchemaSelector/SchemaSelectorPanel.jsx";
 import OrthophotoPanel from "./Orthophoto/OrthophotoPanel.jsx";
+import JoinedTableSyncPanel from "./JoinedTableSync/JoinedTableSyncPanel.jsx"; // 🔹 New import
 
 function RightControls({ activeTool, setActiveTool }) {
   const map = useMap();
@@ -43,7 +45,6 @@ function RightControls({ activeTool, setActiveTool }) {
         setSchemaData({ ...window._schemaSelectorData });
       }
     };
-
     syncData();
     const interval = setInterval(syncData, 100);
     return () => clearInterval(interval);
@@ -56,12 +57,12 @@ function RightControls({ activeTool, setActiveTool }) {
         setOrthophotoData({ ...window._orthophotoData });
       }
     };
-
     syncOrthoData();
     const interval = setInterval(syncOrthoData, 100);
     return () => clearInterval(interval);
   }, []);
 
+  // === MAP CONTROLS ===
   const handleZoomIn = () => map.zoomIn();
   const handleZoomOut = () => map.zoomOut();
   const handleCenter = () => {
@@ -76,6 +77,7 @@ function RightControls({ activeTool, setActiveTool }) {
     }
   };
 
+  // === TOOL HANDLERS ===
   const toggleTool = (toolName) => {
     setActiveTool((prev) => (prev === toolName ? null : toolName));
   };
@@ -93,6 +95,7 @@ function RightControls({ activeTool, setActiveTool }) {
     return { success: false, message: "Save handler not available" };
   };
 
+  // === STYLING ===
   const panelClass =
     "bg-[#151922E6] rounded-l-lg py-2 w-10 shadow-md backdrop-blur-sm flex flex-col items-center";
   const buttonBase =
@@ -116,7 +119,9 @@ function RightControls({ activeTool, setActiveTool }) {
 
   return (
     <>
+      {/* 🎛️ Right Side Button Stack */}
       <div className="absolute top-1/2 right-0 -translate-y-1/2 flex flex-col items-center gap-3 z-[1000] select-none">
+
         {/* 🔍 Zoom + Center */}
         <div className={panelClass}>
           <button onClick={handleZoomIn} className={`${buttonBase} ${hoverColor}`}>
@@ -133,13 +138,11 @@ function RightControls({ activeTool, setActiveTool }) {
           </button>
         </div>
 
-        {/* 🗂️ Tool Buttons */}
+        {/* 🧩 Tool Buttons */}
         <div className={panelClass}>
           <button
             onClick={() => toggleTool("schema")}
-            className={`${buttonBase} ${
-              activeTool === "schema" ? activeColor : hoverColor
-            }`}
+            className={`${buttonBase} ${activeTool === "schema" ? activeColor : hoverColor}`}
           >
             <Folder size={18} />
             <Tooltip text="Municipality/City" />
@@ -147,9 +150,7 @@ function RightControls({ activeTool, setActiveTool }) {
 
           <button
             onClick={() => toggleTool("ortho")}
-            className={`${buttonBase} ${
-              activeTool === "ortho" ? activeColor : hoverColor
-            }`}
+            className={`${buttonBase} ${activeTool === "ortho" ? activeColor : hoverColor}`}
           >
             <Satellite size={18} />
             <Tooltip text="Orthophoto" />
@@ -157,19 +158,23 @@ function RightControls({ activeTool, setActiveTool }) {
 
           <button
             onClick={() => toggleTool("admin")}
-            className={`${buttonBase} ${
-              activeTool === "admin" ? activeColor : hoverColor
-            }`}
+            className={`${buttonBase} ${activeTool === "admin" ? activeColor : hoverColor}`}
           >
             <MapPinned size={18} />
             <Tooltip text="Admin Boundaries" />
           </button>
 
           <button
+            onClick={() => toggleTool("sync")}
+            className={`${buttonBase} ${activeTool === "sync" ? activeColor : hoverColor}`}
+          >
+            <ArrowUpDown size={18} />
+            <Tooltip text="RPT-GIS Sync Tool" />
+          </button>
+
+          <button
             onClick={() => toggleTool("parcel")}
-            className={`${buttonBase} ${
-              activeTool === "parcel" ? activeColor : hoverColor
-            }`}
+            className={`${buttonBase} ${activeTool === "parcel" ? activeColor : hoverColor}`}
           >
             <Paintbrush size={18} />
             <Tooltip text="Parcel Styling" />
@@ -177,7 +182,7 @@ function RightControls({ activeTool, setActiveTool }) {
         </div>
       </div>
 
-      {/* 🗺️ Schema Selector Panel */}
+      {/* 🧭 Tool Panels */}
       <SchemaSelectorPanel
         isVisible={activeTool === "schema"}
         onClose={() => setActiveTool(null)}
@@ -189,7 +194,6 @@ function RightControls({ activeTool, setActiveTool }) {
         userAccess={schemaData.userAccess}
       />
 
-      {/* 🛰️ Orthophoto Panel */}
       <OrthophotoPanel
         isVisible={activeTool === "ortho"}
         onClose={() => setActiveTool(null)}
@@ -197,9 +201,14 @@ function RightControls({ activeTool, setActiveTool }) {
         onSave={handleOrthophotoSave}
       />
 
-      {/* 🗺️ Admin Boundaries Panel */}
       <AdminBoundariesPanel
         isVisible={activeTool === "admin"}
+        onClose={() => setActiveTool(null)}
+      />
+
+      {/* 🔄 JoinedTable Sync Panel */}
+      <JoinedTableSyncPanel
+        isVisible={activeTool === "sync"}
         onClose={() => setActiveTool(null)}
       />
     </>

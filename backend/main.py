@@ -19,6 +19,7 @@ from routes.landmarks import router as landmark_router
 from routes.search import router as search_router
 from routes.province import router as province_router
 from routes.municipal import router as municipal_router
+from routes.sync import router as sync_router          # ✅ Added sync.py router import
 from Predictive_Model_Tools.XGBoost.routes import router as ai_xgb_router
 from Predictive_Model_Tools import linear_regression as ai_linear_router
 
@@ -52,6 +53,7 @@ app.include_router(thematic_router, prefix="/api")
 app.include_router(tableinfo_router, prefix="/api")
 app.include_router(province_router, prefix="/api")
 app.include_router(municipal_router, prefix="/api")
+app.include_router(sync_router, prefix="/api")          # ✅ Register sync router here
 app.include_router(ai_linear_router.router, prefix="/api")
 app.include_router(ai_xgb_router, prefix="/api")
 
@@ -65,6 +67,9 @@ app.mount("/", StaticFiles(directory="static", html=True), name="static")
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
+
+
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -88,6 +93,7 @@ from routes.landmarks import router as landmark_router
 from routes.search import router as search_router
 from routes.province import router as province_router
 from routes.municipal import router as municipal_router
+from routes.sync import router as sync_router           # ✅ Added sync.py router import here too
 from Predictive_Model_Tools import linear_regression as ai_linear_router
 from Predictive_Model_Tools.GWR.routes import router as ai_gwr_router
 from Predictive_Model_Tools.XGBoost.routes import router as ai_xgb_router
@@ -131,6 +137,7 @@ app.include_router(thematic_router, prefix="/api")
 app.include_router(tableinfo_router, prefix="/api")
 app.include_router(province_router, prefix="/api")
 app.include_router(municipal_router, prefix="/api")
+app.include_router(sync_router, prefix="/api")           # ✅ Register sync router here
 app.include_router(ai_linear_router.router, prefix="/api")
 app.include_router(ai_linear_router.router, prefix="/api")
 app.include_router(ai_gwr_router, prefix="/api")
