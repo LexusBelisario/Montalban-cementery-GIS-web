@@ -23,6 +23,7 @@ from Predictive_Model_Tools.XGBoost.routes import router as ai_xgb_router
 from Predictive_Model_Tools import linear_regression as ai_linear_router
 
 
+
 app = FastAPI()
 
 # CORS middleware
@@ -90,6 +91,8 @@ from routes.municipal import router as municipal_router
 from Predictive_Model_Tools import linear_regression as ai_linear_router
 from Predictive_Model_Tools.GWR.routes import router as ai_gwr_router
 from Predictive_Model_Tools.XGBoost.routes import router as ai_xgb_router
+from Predictive_Model_Tools.Spatial_Lag_Model.routes import router as ai_slm_router
+
 
 
 
@@ -132,6 +135,8 @@ app.include_router(ai_linear_router.router, prefix="/api")
 app.include_router(ai_linear_router.router, prefix="/api")
 app.include_router(ai_gwr_router, prefix="/api")
 app.include_router(ai_xgb_router, prefix="/api")
+app.include_router(ai_slm_router, prefix="/api")
+
 
 
 # ==========================================================

@@ -4,6 +4,7 @@ import "./toolbar.css";
 import LinearRegression from "../PredictiveModelTools/LinearRegression/LinearRegression.jsx";
 import GWR from "../PredictiveModelTools/GWR/GWR.jsx";
 import XGBoost from "../PredictiveModelTools/XGBoost/XGBoost.jsx";
+import SpatialLagModel from "../PredictiveModelTools/SpatialLagModel/SpatialLagModel.jsx";
 
 const TBPredictiveModelTools = () => {
   // === AI Model states ===
@@ -20,6 +21,9 @@ const TBPredictiveModelTools = () => {
   // === GEO-AI Model handlers ===
   const handleGWR = () => setShowGWR(true);
 
+  const [showSLM, setShowSLM] = useState(false);
+  const handleSLM = () => setShowSLM(true);
+
   // === Placeholder handlers (for future models) ===
   const handlePlaceholder = (modelName) => {
     alert(`${modelName} - Coming Soon!`);
@@ -32,6 +36,16 @@ const TBPredictiveModelTools = () => {
         <div className="column-section">
           <h4 className="section-title">AI MODEL</h4>
           <div className="predictive-grid ai-grid">
+            {/* Linear Regression */}
+            <button
+              className="tool-button"
+              onClick={handleLinearRegression}
+              title="Run Linear Regression"
+            >
+              <img src="/icons/mlr.png" alt="Linear Regression" />
+              <span>Linear Regression</span>
+            </button>
+
             {/* XGBoost */}
             <button
               className="tool-button"
@@ -51,16 +65,6 @@ const TBPredictiveModelTools = () => {
               <img src="/icons/randomforest.png" alt="Random Forest" />
               <span>Random Forest</span>
             </button>
-
-            {/* Linear Regression */}
-            <button
-              className="tool-button"
-              onClick={handleLinearRegression}
-              title="Run Linear Regression"
-            >
-              <img src="/icons/mlr.png" alt="Linear Regression" />
-              <span>Linear Regression</span>
-            </button>
           </div>
         </div>
 
@@ -68,16 +72,6 @@ const TBPredictiveModelTools = () => {
         <div className="column-section">
           <h4 className="section-title">GEO-AI MODEL</h4>
           <div className="predictive-grid geo-grid">
-            {/* GWR */}
-            <button
-              className="tool-button"
-              onClick={handleGWR}
-              title="Run Geographically Weighted Regression"
-            >
-              <img src="/icons/gwr.png" alt="GWR" />
-              <span>Geographically Weighted Regression</span>
-            </button>
-
             {/* Ordinary Least Squares */}
             <button
               className="tool-button"
@@ -91,11 +85,21 @@ const TBPredictiveModelTools = () => {
             {/* Spatial Lag Model */}
             <button
               className="tool-button"
-              onClick={() => handlePlaceholder("Spatial Lag Model")}
+              onClick={handleSLM}
               title="Run Spatial Lag Model"
             >
               <img src="/icons/slm.png" alt="Spatial Lag Model" />
               <span>Spatial Lag Model</span>
+            </button>
+
+            {/* GWR */}
+            <button
+              className="tool-button"
+              onClick={handleGWR}
+              title="Run Geographically Weighted Regression"
+            >
+              <img src="/icons/gwr.png" alt="GWR" />
+              <span>Geographically Weighted Regression</span>
             </button>
           </div>
         </div>
@@ -117,6 +121,12 @@ const TBPredictiveModelTools = () => {
       {showGWR &&
         ReactDOM.createPortal(
           <GWR onClose={() => setShowGWR(false)} />,
+          document.body
+        )}
+
+      {showSLM &&
+        ReactDOM.createPortal(
+          <SpatialLagModel onClose={() => setShowSLM(false)} />,
           document.body
         )}
     </>

@@ -4,6 +4,21 @@ import API from "../../../api.js";
 import PredictedMapModal from "../PredictedMapModal.jsx";
 
 const XGBoost = ({ onClose }) => {
+  // BLGF 3-color palette
+  const C = {
+    gold: "#F7C800", // gold yellow
+    purple: "#4B1F78", // deep purple
+    offwhite: "#F5F6FA", // near-white (not pure white)
+  };
+
+  // helper classes (consistent look)
+  const ring = "focus:outline-none focus:ring-2 focus:ring-[#4B1F78]/40";
+  const trans = "transition-colors duration-150";
+  const btnBase = `rounded-lg border px-4 py-2 font-medium ${ring} ${trans} hover:brightness-105 active:brightness-95`;
+  const btnAccent = `${btnBase}`; // gold background, purple text
+  const btnPrimary = `${btnBase}`; // purple background, offwhite text
+  const btnGhost = `${btnBase}`; // offwhite background, purple text
+
   const [files, setFiles] = useState([]);
   const [zipFile, setZipFile] = useState(null);
   const [uploadMode, setUploadMode] = useState("shapefile");
@@ -13,22 +28,23 @@ const XGBoost = ({ onClose }) => {
   const [scaler, setScaler] = useState("None");
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  // Run saved model state
   const [showRunModal, setShowRunModal] = useState(false);
   const [modelFile, setModelFile] = useState(null);
   const [runFiles, setRunFiles] = useState([]);
   const [runZipFile, setRunZipFile] = useState(null);
   const [runUploadMode, setRunUploadMode] = useState("shapefile");
+
   const [showPredictedMap, setShowPredictedMap] = useState(false);
   const [previewPath, setPreviewPath] = useState(null);
   const [showResultsPanel, setShowResultsPanel] = useState(false);
   const [fullscreenGraph, setFullscreenGraph] = useState(null);
 
-  // ==========================================================
-  // 📂 Load shapefile fields
-  // ==========================================================
+  // ---------- file loaders ----------
   const handleFileChange = async (e) => {
-    const selectedFiles = Array.from(e.target.files);
-    if (selectedFiles.length === 0) return;
+    const selectedFiles = Array.from(e.target.files || []);
+    if (!selectedFiles.length) return;
     setFiles(selectedFiles);
     setZipFile(null);
     setFields([]);
@@ -37,27 +53,25 @@ const XGBoost = ({ onClose }) => {
     setResult(null);
 
     try {
-      const formData = new FormData();
-      selectedFiles.forEach((f) => formData.append("shapefiles", f));
-
+      const fd = new FormData();
+      selectedFiles.forEach((f) => fd.append("shapefiles", f));
       const res = await fetch(`${API}/xgb/fields`, {
         method: "POST",
-        body: formData,
+        body: fd,
       });
       const data = await res.json();
-
       if (res.ok && data.fields) setFields(data.fields);
       else alert(data.error || "Unable to extract fields.");
     } catch (err) {
-      console.error("Error reading shapefile fields:", err);
-      alert("Error reading shapefile fields. See console for details.");
+      console.error(err);
+      alert("Error reading shapefile fields.");
     }
   };
 
   const handleZipChange = async (e) => {
-    const selectedZip = e.target.files[0];
-    if (!selectedZip) return;
-    setZipFile(selectedZip);
+    const z = e.target.files?.[0];
+    if (!z) return;
+    setZipFile(z);
     setFiles([]);
     setFields([]);
     setIndependentVars([]);
@@ -65,26 +79,22 @@ const XGBoost = ({ onClose }) => {
     setResult(null);
 
     try {
-      const formData = new FormData();
-      formData.append("zip_file", selectedZip);
-
+      const fd = new FormData();
+      fd.append("zip_file", z);
       const res = await fetch(`${API}/xgb/fields`, {
         method: "POST",
-        body: formData,
+        body: fd,
       });
       const data = await res.json();
-
       if (res.ok && data.fields) setFields(data.fields);
       else alert(data.error || "Unable to extract fields from ZIP.");
     } catch (err) {
-      console.error("Error reading ZIP fields:", err);
-      alert("Error reading ZIP fields. See console for details.");
+      console.error(err);
+      alert("Error reading ZIP fields.");
     }
   };
 
-  // ==========================================================
-  // ⚙️ Train model
-  // ==========================================================
+  // ---------- train ----------
   const handleTrainModel = async () => {
     if (files.length === 0 && !zipFile)
       return alert("Please upload a shapefile or ZIP.");
@@ -96,41 +106,37 @@ const XGBoost = ({ onClose }) => {
     setResult(null);
 
     try {
-      const formData = new FormData();
-
+      const fd = new FormData();
       let endpoint = `${API}/xgb/train`;
       if (zipFile) {
         endpoint = `${API}/xgb/train-zip`;
-        formData.append("zip_file", zipFile);
+        fd.append("zip_file", zipFile);
       } else {
-        files.forEach((f) => formData.append("shapefiles", f));
+        files.forEach((f) => fd.append("shapefiles", f));
       }
+      fd.append("independent_vars", JSON.stringify(independentVars));
+      fd.append("dependent_var", dependentVar);
+      fd.append("scaler_choice", scaler);
 
-      formData.append("independent_vars", JSON.stringify(independentVars));
-      formData.append("dependent_var", dependentVar);
-      formData.append("scaler_choice", scaler);
-
-      const res = await fetch(endpoint, { method: "POST", body: formData });
+      const res = await fetch(endpoint, { method: "POST", body: fd });
       const data = await res.json();
 
       if (!res.ok) {
-        console.error("Training error:", data);
+        console.error(data);
         alert(`Error: ${data.error || res.statusText}`);
       } else {
         setResult(data);
         alert("✅ XGBoost model training completed!");
       }
     } catch (err) {
-      console.error("Training fetch error:", err);
+      console.error(err);
       alert("Failed to connect to backend.");
     } finally {
       setLoading(false);
     }
   };
 
-  // ==========================================================
-  // 🧠 Run Saved Model
-  // ==========================================================
+  // ---------- run saved ----------
   const handleRunModel = async () => {
     if (!modelFile) return alert("Please select a saved model (.pkl)");
     if (runFiles.length === 0 && !runZipFile)
@@ -138,32 +144,27 @@ const XGBoost = ({ onClose }) => {
 
     setLoading(true);
     setResult(null);
-
     try {
-      const formData = new FormData();
-      formData.append("model_file", modelFile);
-
-      if (runZipFile) {
-        formData.append("zip_file", runZipFile);
-      } else {
-        runFiles.forEach((f) => formData.append("shapefiles", f));
-      }
+      const fd = new FormData();
+      fd.append("model_file", modelFile);
+      if (runZipFile) fd.append("zip_file", runZipFile);
+      else runFiles.forEach((f) => fd.append("shapefiles", f));
 
       const res = await fetch(`${API}/xgb/run-saved-model`, {
         method: "POST",
-        body: formData,
+        body: fd,
       });
       const data = await res.json();
 
       if (!res.ok) {
-        console.error("Run Model Error:", data);
+        console.error(data);
         alert(`Error: ${data.error || res.statusText}`);
       } else {
         setResult(data);
         alert("✅ Prediction completed!");
       }
     } catch (err) {
-      console.error("Run Model Fetch Error:", err);
+      console.error(err);
       alert("Failed to connect to backend.");
     } finally {
       setLoading(false);
@@ -174,95 +175,94 @@ const XGBoost = ({ onClose }) => {
     }
   };
 
-  const toggleIndependentVar = (field) => {
+  const toggleIndependentVar = (f) =>
     setIndependentVars((prev) =>
-      prev.includes(field) ? prev.filter((f) => f !== field) : [...prev, field]
+      prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f]
     );
-  };
 
-  const plotConfig = (filename) => ({
+  // ---------- plots ----------
+  const plotLayoutBase = {
+    paper_bgcolor: C.offwhite,
+    plot_bgcolor: C.offwhite,
+    font: { color: C.purple },
+    hoverlabel: {
+      bgcolor: C.offwhite,
+      bordercolor: C.gold,
+      font: { color: C.purple },
+    },
+    margin: { l: 60, r: 30, t: 60, b: 60 },
+  };
+  const plotConfig = (fn) => ({
     responsive: true,
     displayModeBar: true,
     displaylogo: false,
     scrollZoom: true,
-    toImageButtonOptions: { format: "png", filename },
+    toImageButtonOptions: { format: "png", filename: fn },
     modeBarButtonsToRemove: ["select2d", "lasso2d"],
   });
 
-  const plotLayoutBase = {
-    paper_bgcolor: "#000",
-    plot_bgcolor: "#000",
-    font: { color: "white" },
-    hoverlabel: {
-      bgcolor: "#111",
-      bordercolor: "#00ff9d",
-      font: { color: "white" },
-    },
-    margin: { l: 60, r: 30, t: 60, b: 60 },
-  };
-
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
-      <div className="bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white w-full max-w-md rounded-2xl shadow-2xl border border-green-500/30 overflow-hidden">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-green-600 to-emerald-700 px-6 py-4 flex justify-between items-center">
-          <h3 className="text-xl font-bold flex items-center gap-2">
-            ⚙️ XGBoost Regression
-          </h3>
+    // simple dark overlay + subtle blur
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
+      {/* modal */}
+      <div
+        className="w-full max-w-md rounded-2xl shadow-xl overflow-hidden border"
+        style={{ background: C.offwhite, borderColor: "rgba(75,31,120,0.2)" }}
+      >
+        {/* header */}
+        <div
+          className="px-6 py-4 flex justify-between items-center"
+          style={{ background: C.purple, color: C.offwhite }}
+        >
+          <h3 className="text-lg font-semibold">⚙️ XGBoost Regression</h3>
           <button
             onClick={onClose}
-            className="text-white/80 hover:text-white hover:rotate-90 transition-all duration-300 text-2xl"
+            className={`${ring} ${trans} hover:brightness-110 text-xl rounded-md px-2`}
+            aria-label="Close"
+            style={{ color: C.offwhite }}
           >
             ✕
           </button>
         </div>
 
-        {/* Content */}
-        <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
-          {/* Upload Mode Toggle */}
+        {/* content */}
+        <div
+          className="p-6 space-y-4 max-h-[75vh] overflow-y-auto"
+          style={{ color: C.purple }}
+        >
+          {/* upload method */}
           <div>
-            <label className="block text-sm font-medium text-green-400 mb-2">
+            <label className="block text-sm font-medium mb-2">
               Upload Method
             </label>
             <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  setUploadMode("shapefile");
-                  setZipFile(null);
-                  setFields([]);
-                  setIndependentVars([]);
-                  setDependentVar("");
-                }}
-                className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all duration-200 ${
-                  uploadMode === "shapefile"
-                    ? "bg-green-600 text-white shadow-lg shadow-green-500/50"
-                    : "bg-gray-800 text-gray-400 hover:bg-gray-700"
-                }`}
-              >
-                📄 Shapefile
-              </button>
-              <button
-                onClick={() => {
-                  setUploadMode("zip");
-                  setFiles([]);
-                  setFields([]);
-                  setIndependentVars([]);
-                  setDependentVar("");
-                }}
-                className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all duration-200 ${
-                  uploadMode === "zip"
-                    ? "bg-green-600 text-white shadow-lg shadow-green-500/50"
-                    : "bg-gray-800 text-gray-400 hover:bg-gray-700"
-                }`}
-              >
-                📦 ZIP File
-              </button>
+              {["shapefile", "zip"].map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => {
+                    setUploadMode(mode);
+                    if (mode === "zip") setFiles([]);
+                    else setZipFile(null);
+                    setFields([]);
+                    setIndependentVars([]);
+                    setDependentVar("");
+                  }}
+                  className={`${btnGhost}`}
+                  style={{
+                    background: uploadMode === mode ? C.purple : C.offwhite,
+                    color: uploadMode === mode ? C.offwhite : C.purple,
+                    borderColor: "rgba(75,31,120,0.25)",
+                  }}
+                >
+                  {mode === "shapefile" ? "📄 Shapefile" : "📦 ZIP File"}
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* File Upload */}
+          {/* file upload */}
           <div>
-            <label className="block text-sm font-medium text-green-400 mb-2">
+            <label className="block text-sm font-medium mb-2">
               {uploadMode === "shapefile"
                 ? "Upload Shapefile (.shp, .dbf, .shx, .prj)"
                 : "Upload ZIP File"}
@@ -271,8 +271,8 @@ const XGBoost = ({ onClose }) => {
               {uploadMode === "shapefile" ? (
                 <>
                   <input
-                    type="file"
                     id="xgbShpInput"
+                    type="file"
                     multiple
                     accept=".shp,.dbf,.shx,.prj"
                     className="hidden"
@@ -282,12 +282,17 @@ const XGBoost = ({ onClose }) => {
                     onClick={() =>
                       document.getElementById("xgbShpInput").click()
                     }
-                    className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-medium transition-all duration-200 shadow-lg hover:shadow-green-500/50"
+                    className={`${btnAccent}`}
+                    style={{
+                      background: C.gold,
+                      color: C.purple,
+                      borderColor: "rgba(75,31,120,0.25)",
+                    }}
                   >
                     📂 Select Files
                   </button>
-                  <span className="text-xs text-gray-400 truncate flex-1">
-                    {files.length > 0
+                  <span className="text-xs truncate flex-1 opacity-80">
+                    {files.length
                       ? files.map((f) => f.name).join(", ")
                       : "No files selected"}
                   </span>
@@ -305,11 +310,16 @@ const XGBoost = ({ onClose }) => {
                     onClick={() =>
                       document.getElementById("xgbZipInput").click()
                     }
-                    className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-medium transition-all duration-200 shadow-lg hover:shadow-green-500/50"
+                    className={`${btnAccent}`}
+                    style={{
+                      background: C.gold,
+                      color: C.purple,
+                      borderColor: "rgba(75,31,120,0.25)",
+                    }}
                   >
                     📦 Select ZIP
                   </button>
-                  <span className="text-xs text-gray-400 truncate flex-1">
+                  <span className="text-xs truncate flex-1 opacity-80">
                     {zipFile ? zipFile.name : "No ZIP selected"}
                   </span>
                 </>
@@ -317,31 +327,41 @@ const XGBoost = ({ onClose }) => {
             </div>
           </div>
 
-          <hr className="border-gray-700/50" />
+          <hr
+            className="border-0 h-px"
+            style={{ background: "rgba(75,31,120,0.15)" }}
+          />
 
-          {/* Variable Selection */}
+          {/* variable selection */}
           <div>
-            <label className="block text-sm font-medium text-green-400 mb-2">
+            <label className="block text-sm font-medium mb-2">
               Independent Variables
             </label>
-            <div className="bg-black/40 border border-gray-700 rounded-lg p-3 max-h-40 overflow-y-auto space-y-1">
-              {fields.length > 0 ? (
+            <div
+              className="rounded-lg p-3 max-h-40 overflow-y-auto border"
+              style={{
+                borderColor: "rgba(75,31,120,0.25)",
+                background: "#fff",
+              }}
+            >
+              {fields.length ? (
                 fields.map((f) => (
                   <label
                     key={f}
-                    className="flex items-center gap-2 p-2 rounded hover:bg-gray-800/50 transition cursor-pointer"
+                    className="flex items-center gap-2 p-2 rounded cursor-pointer hover:brightness-105"
                   >
                     <input
                       type="checkbox"
                       checked={independentVars.includes(f)}
                       onChange={() => toggleIndependentVar(f)}
-                      className="w-4 h-4 accent-green-500"
+                      className="w-4 h-4"
+                      style={{ accentColor: C.gold }}
                     />
                     <span className="text-sm">{f}</span>
                   </label>
                 ))
               ) : (
-                <p className="text-gray-500 text-xs italic text-center py-2">
+                <p className="text-xs italic text-center py-2 opacity-70">
                   No fields loaded yet.
                 </p>
               )}
@@ -349,94 +369,123 @@ const XGBoost = ({ onClose }) => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-green-400 mb-2">
+            <label className="block text-sm font-medium mb-2">
               Dependent Variable
             </label>
             <select
               value={dependentVar}
               onChange={(e) => setDependentVar(e.target.value)}
-              className="w-full bg-black/40 border border-gray-700 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 transition"
+              className={`w-full rounded-lg px-3 py-2 border ${ring} ${trans} hover:brightness-105`}
+              style={{
+                borderColor: "rgba(75,31,120,0.25)",
+                color: C.purple,
+                background: C.offwhite,
+              }}
             >
               <option value="">-- Select --</option>
               {fields.map((f) => (
-                <option key={f} value={f} className="bg-gray-900">
+                <option key={f} value={f} className="bg-[#F5F6FA]">
                   {f}
                 </option>
               ))}
             </select>
           </div>
 
-          {/* Scaler */}
           <div>
-            <label className="block text-sm font-medium text-green-400 mb-2">
-              Scaler
-            </label>
+            <label className="block text-sm font-medium mb-2">Scaler</label>
             <select
               value={scaler}
               onChange={(e) => setScaler(e.target.value)}
-              className="w-full bg-black/40 border border-gray-700 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 transition"
+              className={`w-full rounded-lg px-3 py-2 border ${ring} ${trans} hover:brightness-105`}
+              style={{
+                borderColor: "rgba(75,31,120,0.25)",
+                color: C.purple,
+                background: C.offwhite,
+              }}
             >
-              <option className="bg-gray-900">None</option>
-              <option className="bg-gray-900">Standard</option>
-              <option className="bg-gray-900">MinMax</option>
+              <option className="bg-[#F5F6FA]">None</option>
+              <option className="bg-[#F5F6FA]">Standard</option>
+              <option className="bg-[#F5F6FA]">MinMax</option>
             </select>
           </div>
 
-          {/* Buttons */}
+          {/* actions */}
           <div className="flex gap-3 pt-2">
             <button
               onClick={handleTrainModel}
               disabled={loading}
-              className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-semibold py-3 rounded-lg transition-all duration-200 shadow-lg hover:shadow-green-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className={`${btnAccent} flex-1 disabled:opacity-50`}
+              style={{
+                background: C.gold,
+                color: C.purple,
+                borderColor: "rgba(75,31,120,0.25)",
+              }}
             >
               {loading ? "Training..." : "Train Model"}
             </button>
             <button
               onClick={() => setShowRunModal(true)}
               disabled={loading}
-              className="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-semibold py-3 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              className={`${btnPrimary} flex-1 disabled:opacity-50`}
+              style={{
+                background: C.purple,
+                color: C.offwhite,
+                borderColor: "rgba(75,31,120,0.25)",
+              }}
             >
               Run Saved Model
             </button>
           </div>
 
-          {/* Results */}
+          {/* results */}
           {result && (
-            <div className="mt-6 bg-gradient-to-br from-gray-800/50 to-black/50 rounded-xl border border-green-500/30 p-4 space-y-4">
+            <div
+              className="mt-6 rounded-xl p-4 space-y-4 border"
+              style={{
+                borderColor: "rgba(75,31,120,0.2)",
+                color: C.purple,
+                background: C.offwhite,
+              }}
+            >
               {result.metrics ? (
-                /* Training Mode */
                 <>
-                  <h3 className="text-lg font-bold text-green-400 flex items-center gap-2">
+                  <h3 className="text-base font-semibold">
                     🧠 XGBoost Model Summary
                   </h3>
-                  <p className="text-sm text-gray-300">
+                  <p className="text-sm">
                     Dependent Variable:{" "}
-                    <span className="text-green-400 font-semibold">
+                    <span className="font-semibold" style={{ color: C.gold }}>
                       {result.dependent_var}
                     </span>
                   </p>
 
-                  {/* Metrics Table */}
+                  {/* metrics table */}
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="bg-green-600/20 border-b border-green-500/30">
-                          <th className="text-left p-2 text-green-400 font-semibold">
-                            Metric
-                          </th>
-                          <th className="text-right p-2 text-green-400 font-semibold">
-                            Value
-                          </th>
+                        <tr
+                          style={{
+                            borderBottom: "1px solid rgba(75,31,120,0.25)",
+                          }}
+                        >
+                          <th className="text-left p-2">Metric</th>
+                          <th className="text-right p-2">Value</th>
                         </tr>
                       </thead>
                       <tbody>
                         {Object.entries(result.metrics || {}).map(([k, v]) => (
                           <tr
                             key={k}
-                            className="border-b border-gray-700/50 hover:bg-gray-800/30"
+                            className="hover:brightness-105"
+                            style={{
+                              borderBottom: "1px solid rgba(75,31,120,0.12)",
+                            }}
                           >
                             <td className="p-2">{k}</td>
-                            <td className="text-right p-2 font-mono text-green-300">
+                            <td
+                              className="text-right p-2 font-mono"
+                              style={{ color: C.gold }}
+                            >
                               {typeof v === "number" ? v.toFixed(6) : v}
                             </td>
                           </tr>
@@ -445,32 +494,38 @@ const XGBoost = ({ onClose }) => {
                     </table>
                   </div>
 
-                  {/* Feature Importance Table */}
+                  {/* importance table */}
                   <div>
-                    <h4 className="text-sm font-semibold text-green-400 mb-2">
+                    <h4 className="text-sm font-semibold mb-2">
                       Feature Importance
                     </h4>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
-                          <tr className="bg-green-600/20 border-b border-green-500/30">
-                            <th className="text-left p-2 text-green-400 font-semibold">
-                              Feature
-                            </th>
-                            <th className="text-right p-2 text-green-400 font-semibold">
-                              Importance
-                            </th>
+                          <tr
+                            style={{
+                              borderBottom: "1px solid rgba(75,31,120,0.25)",
+                            }}
+                          >
+                            <th className="text-left p-2">Feature</th>
+                            <th className="text-right p-2">Importance</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {result.features?.map((feat, idx) => (
+                          {result.features?.map((feat, i) => (
                             <tr
                               key={feat}
-                              className="border-b border-gray-700/50 hover:bg-gray-800/30"
+                              className="hover:brightness-105"
+                              style={{
+                                borderBottom: "1px solid rgba(75,31,120,0.12)",
+                              }}
                             >
                               <td className="p-2">{feat}</td>
-                              <td className="text-right p-2 font-mono text-green-300">
-                                {result.importance[idx]?.toFixed(6) || "—"}
+                              <td
+                                className="text-right p-2 font-mono"
+                                style={{ color: C.gold }}
+                              >
+                                {result.importance[i]?.toFixed(6) || "—"}
                               </td>
                             </tr>
                           ))}
@@ -480,81 +535,59 @@ const XGBoost = ({ onClose }) => {
                   </div>
 
                   {/* Downloads */}
-                  <div>
-                    <h4 className="text-sm font-semibold text-green-400 mb-2">
-                      Downloads
-                    </h4>
-                    <ul className="space-y-1 text-sm">
-                      <li>
-                        <a
-                          href={result.downloads.model}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-blue-400 hover:text-blue-300 hover:underline transition"
-                        >
-                          📦 Model (.pkl)
-                        </a>
-                      </li>
-                      <li>
-                        <a
-                          href={result.downloads.report}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-blue-400 hover:text-blue-300 hover:underline transition"
-                        >
-                          📄 PDF Report
-                        </a>
-                      </li>
-                      <li>
-                        <a
-                          href={result.downloads.shapefile}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-blue-400 hover:text-blue-300 hover:underline transition"
-                        >
-                          🗺️ Predicted Shapefile (.zip)
-                        </a>
-                      </li>
-                      <li>
-                        <a
-                          href={result.downloads.cama_csv}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-blue-400 hover:text-blue-300 hover:underline transition"
-                        >
-                          📊 Full CAMA Table (CSV)
-                        </a>
-                      </li>
-                    </ul>
-                  </div>
-
-                  <button
-                    onClick={() => setShowResultsPanel(!showResultsPanel)}
-                    className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-semibold py-3 rounded-lg transition- all duration-200 shadow-lg hover:shadow-green-500/50"
-                  >
-                    {showResultsPanel
-                      ? "Hide Graphs & Tables"
-                      : "Show Graphs & Tables"}
-                  </button>
-                </>
-              ) : (
-                /* Run Mode */
-                <>
                   {result.downloads && (
                     <div>
-                      <h4 className="text-sm font-semibold text-green-400 mb-2">
-                        Downloads
-                      </h4>
+                      <h4 className="text-sm font-semibold mb-2">Downloads</h4>
                       <ul className="space-y-1 text-sm">
+                        {result.downloads.model && (
+                          <li>
+                            <a
+                              href={result.downloads.model}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="underline-offset-2 hover:underline"
+                              style={{ color: C.purple }}
+                            >
+                              📦 Model (.pkl)
+                            </a>
+                          </li>
+                        )}
+                        {result.downloads.report && (
+                          <li>
+                            <a
+                              href={result.downloads.report}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="underline-offset-2 hover:underline"
+                              style={{ color: C.purple }}
+                            >
+                              📄 PDF Report
+                            </a>
+                          </li>
+                        )}
                         {result.downloads.shapefile && (
                           <li>
                             <a
                               href={result.downloads.shapefile}
                               target="_blank"
                               rel="noreferrer"
-                              className="text-blue-400 hover:text-blue-300 hover:underline transition"
+                              className="underline-offset-2 hover:underline"
+                              style={{ color: C.purple }}
                             >
                               🗺️ Predicted Shapefile (.zip)
+                            </a>
+                          </li>
+                        )}
+                        {result.downloads.cama_csv && (
+                          <li>
+                            <a
+                              href={result.downloads.cama_csv}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="underline-offset-2 hover:underline"
+                              style={{ color: C.purple }}
+                            >
+                              📊 Full CAMA Table (CSV)
                             </a>
                           </li>
                         )}
@@ -563,22 +596,40 @@ const XGBoost = ({ onClose }) => {
                   )}
 
                   <button
-                    onClick={() => {
-                      const geojsonLink = result.downloads?.shapefile
-                        ? `${API}/xgb/preview-geojson?file_path=${encodeURIComponent(result.downloads.shapefile)}`
-                        : null;
-
-                      if (geojsonLink) {
-                        setPreviewPath(geojsonLink);
-                        setShowPredictedMap(true);
-                      } else {
-                        alert("No predicted map data available.");
-                      }
+                    onClick={() => setShowResultsPanel((s) => !s)}
+                    className={`${btnPrimary} w-full`}
+                    style={{
+                      background: C.purple,
+                      color: C.offwhite,
+                      borderColor: "rgba(75,31,120,0.25)",
                     }}
-                    className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold py-3 rounded-lg transition-all duration-200 shadow-lg hover:shadow-cyan-500/50"
                   >
-                    🗺️ Show Predicted Values in the Map
+                    {showResultsPanel
+                      ? "Hide Graphs & Tables"
+                      : "Show Graphs & Tables"}
                   </button>
+                </>
+              ) : (
+                <>
+                  {result.downloads?.shapefile && (
+                    <button
+                      onClick={() => {
+                        const link = `${API}/xgb/preview-geojson?file_path=${encodeURIComponent(
+                          result.downloads.shapefile
+                        )}`;
+                        setPreviewPath(link);
+                        setShowPredictedMap(true);
+                      }}
+                      className={`${btnPrimary} w-full`}
+                      style={{
+                        background: C.purple,
+                        color: C.offwhite,
+                        borderColor: "rgba(75,31,120,0.25)",
+                      }}
+                    >
+                      🗺️ Show Predicted Values in the Map
+                    </button>
+                  )}
                 </>
               )}
             </div>
@@ -586,26 +637,37 @@ const XGBoost = ({ onClose }) => {
         </div>
       </div>
 
-      {/* === Graphs Modal === */}
-      {showResultsPanel && result && result.metrics && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-[10000] p-4">
-          <div className="bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white rounded-2xl shadow-2xl border border-green-500/30 w-full max-w-7xl max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-gradient-to-r from-green-600 to-emerald-700 px-6 py-4 flex justify-between items-center z-10">
-              <div>
-                <h2 className="text-2xl font-bold">📊 XGBoost Model Results</h2>
-                <p className="text-sm text-green-100 mt-1">
-                  Interactive model performance & diagnostics dashboard
-                </p>
-              </div>
+      {/* Graphs Modal */}
+      {showResultsPanel && result?.metrics && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10000] p-4">
+          <div
+            className="rounded-2xl w-full max-w-7xl max-h-[90vh] overflow-y-auto border"
+            style={{
+              background: C.offwhite,
+              borderColor: "rgba(75,31,120,0.2)",
+              color: C.purple,
+            }}
+          >
+            <div
+              className="sticky top-0 px-6 py-4 flex justify-between items-center border-b"
+              style={{
+                background: C.purple,
+                color: C.offwhite,
+                borderColor: "rgba(75,31,120,0.2)",
+              }}
+            >
+              <h2 className="text-lg font-semibold">
+                📊 XGBoost Model Results
+              </h2>
               <button
                 onClick={() => setShowResultsPanel(false)}
-                className="text-white/80 hover:text-white hover:rotate-90 transition-all duration-300 text-3xl"
+                className={`${ring} ${trans} hover:brightness-110 text-2xl rounded-md px-2`}
+                style={{ color: C.offwhite }}
               >
                 ✕
               </button>
             </div>
 
-            {/* Graph Grid */}
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
               {[
                 { key: "importance", title: "Feature Importance" },
@@ -615,38 +677,33 @@ const XGBoost = ({ onClose }) => {
               ].map((g) => (
                 <div
                   key={g.key}
+                  className="rounded-xl p-4 border cursor-pointer hover:brightness-105"
                   onClick={() => setFullscreenGraph(g.key)}
-                  className="bg-black/40 border border-green-500/30 rounded-xl p-4 cursor-pointer hover:border-green-500/60 hover:shadow-lg hover:shadow-green-500/20 transition-all duration-300 group"
+                  style={{
+                    background: C.offwhite,
+                    borderColor: "rgba(75,31,120,0.2)",
+                  }}
                 >
-                  <h4 className="text-green-400 font-semibold mb-3 group-hover:text-green-300 transition">
-                    {g.title}
-                  </h4>
+                  <h4 className="font-medium mb-3">{g.title}</h4>
 
                   {g.key === "importance" && (
                     <Plot
                       data={[
                         {
-                          x: result.features || [],
-                          y: result.importance || [],
+                          x: result.features,
+                          y: result.importance,
                           type: "bar",
-                          marker: { color: "#00ff9d" },
-                          showlegend: false,
+                          marker: { color: C.gold },
                         },
                       ]}
                       layout={{
                         ...plotLayoutBase,
-                        title: "",
-                        xaxis: {
-                          title: "",
-                          color: "#ccc",
-                          showticklabels: false,
-                        },
-                        yaxis: { title: "", color: "#ccc" },
                         margin: { l: 40, r: 20, t: 20, b: 30 },
+                        xaxis: { showticklabels: false },
                       }}
                       config={plotConfig(g.key)}
                       useResizeHandler
-                      style={{ width: "100%", height: "250px" }}
+                      style={{ width: "100%", height: 250 }}
                     />
                   )}
 
@@ -658,23 +715,18 @@ const XGBoost = ({ onClose }) => {
                           x: result.residual_bins,
                           y: result.residual_counts,
                           marker: {
-                            color: "#00ff9d",
-                            opacity: 0.85,
-                            line: { color: "#0f0f0f", width: 1.2 },
+                            color: C.gold,
+                            line: { color: C.purple, width: 1 },
                           },
-                          showlegend: false,
                         },
                       ]}
                       layout={{
                         ...plotLayoutBase,
-                        title: "",
-                        xaxis: { title: "", color: "#ccc" },
-                        yaxis: { title: "", color: "#ccc" },
                         margin: { l: 40, r: 20, t: 20, b: 30 },
                       }}
                       config={plotConfig("residual_distribution")}
                       useResizeHandler
-                      style={{ width: "100%", height: "250px" }}
+                      style={{ width: "100%", height: 250 }}
                     />
                   )}
 
@@ -686,32 +738,28 @@ const XGBoost = ({ onClose }) => {
                           y: result.preds,
                           mode: "markers",
                           type: "scatter",
-                          name: "Predicted Values",
                           marker: {
-                            color: "#00ff9d",
+                            color: C.gold,
                             size: 6,
-                            opacity: 0.7,
+                            opacity: 0.8,
+                            line: { color: C.purple, width: 0.5 },
                           },
                         },
                         {
                           x: result.y_test,
                           y: result.y_test,
                           mode: "lines",
-                          name: "Actual Values",
-                          line: { color: "#ffff00", dash: "dash", width: 1.5 },
+                          line: { color: C.purple, dash: "dash", width: 2 },
                         },
                       ]}
                       layout={{
                         ...plotLayoutBase,
-                        title: "",
-                        xaxis: { title: "", color: "#ccc" },
-                        yaxis: { title: "", color: "#ccc" },
                         margin: { l: 40, r: 20, t: 20, b: 30 },
                         showlegend: false,
                       }}
                       config={plotConfig(g.key)}
                       useResizeHandler
-                      style={{ width: "100%", height: "250px" }}
+                      style={{ width: "100%", height: 250 }}
                     />
                   )}
 
@@ -723,28 +771,23 @@ const XGBoost = ({ onClose }) => {
                           y: result.residuals,
                           mode: "markers",
                           type: "scatter",
-                          name: "Residuals",
-                          marker: { color: "#ff6363", size: 6, opacity: 0.7 },
+                          marker: { color: C.purple, size: 6, opacity: 0.8 },
                         },
                         {
                           x: result.preds,
                           y: Array(result.preds?.length).fill(0),
                           mode: "lines",
-                          name: "Zero Line",
-                          line: { color: "#ffff00", dash: "dash", width: 1.5 },
+                          line: { color: C.purple, dash: "dash", width: 2 },
                         },
                       ]}
                       layout={{
                         ...plotLayoutBase,
-                        title: "",
-                        xaxis: { title: "", color: "#ccc" },
-                        yaxis: { title: "", color: "#ccc" },
                         margin: { l: 40, r: 20, t: 20, b: 30 },
                         showlegend: false,
                       }}
                       config={plotConfig(g.key)}
                       useResizeHandler
-                      style={{ width: "100%", height: "250px" }}
+                      style={{ width: "100%", height: 250 }}
                     />
                   )}
                 </div>
@@ -754,26 +797,35 @@ const XGBoost = ({ onClose }) => {
         </div>
       )}
 
-      {/* === Fullscreen Chart === */}
+      {/* Fullscreen chart */}
       {fullscreenGraph && result && (
         <div
-          className="fixed inset-0 bg-black/95 backdrop-blur-md flex items-center justify-center z-[10001] p-4"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10001] p-4"
           onClick={() => setFullscreenGraph(null)}
         >
           <div
-            className="bg-gradient-to-br from-gray-900 via-black to-gray-900 rounded-2xl shadow-2xl border border-green-500/50 w-full max-w-6xl max-h-[90vh] overflow-hidden"
+            className="rounded-2xl w-full max-w-6xl max-height-[90vh] overflow-hidden border"
             onClick={(e) => e.stopPropagation()}
+            style={{
+              background: C.offwhite,
+              borderColor: "rgba(75,31,120,0.2)",
+              color: C.purple,
+            }}
           >
-            <div className="bg-gradient-to-r from-green-600 to-emerald-700 px-6 py-4 flex justify-between items-center">
-              <h3 className="text-xl font-bold text-white">
+            <div
+              className="px-6 py-4 flex justify-between items-center"
+              style={{ background: C.purple, color: C.offwhite }}
+            >
+              <h3 className="text-xl font-semibold">
                 {fullscreenGraph === "importance" && "Feature Importance"}
                 {fullscreenGraph === "residuals" && "Residual Distribution"}
                 {fullscreenGraph === "actual_pred" && "Actual vs Predicted"}
                 {fullscreenGraph === "resid_pred" && "Residuals vs Predicted"}
               </h3>
               <button
+                className={`${ring} ${trans} hover:brightness-110 text-2xl rounded-md px-2`}
                 onClick={() => setFullscreenGraph(null)}
-                className="text-white/80 hover:text-white hover:rotate-90 transition-all duration-300 text-2xl"
+                style={{ color: C.offwhite }}
               >
                 ✕
               </button>
@@ -787,8 +839,8 @@ const XGBoost = ({ onClose }) => {
                           x: result.features,
                           y: result.importance,
                           type: "bar",
-                          name: "Importance Score",
-                          marker: { color: "#00ff9d" },
+                          marker: { color: C.gold },
+                          name: "Importance",
                         },
                       ]
                     : fullscreenGraph === "residuals"
@@ -797,17 +849,11 @@ const XGBoost = ({ onClose }) => {
                             type: "bar",
                             x: result.residual_bins,
                             y: result.residual_counts,
-                            name: "Frequency",
                             marker: {
-                              color: "#00ff9d",
-                              opacity: 0.85,
-                              line: { color: "#0f0f0f", width: 1.2 },
+                              color: C.gold,
+                              line: { color: C.purple, width: 1 },
                             },
-                            width:
-                              0.6 *
-                              ((Math.max(...result.residual_bins) -
-                                Math.min(...result.residual_bins)) /
-                                result.residual_bins.length),
+                            name: "Frequency",
                           },
                         ]
                       : fullscreenGraph === "actual_pred"
@@ -817,24 +863,20 @@ const XGBoost = ({ onClose }) => {
                               y: result.preds,
                               mode: "markers",
                               type: "scatter",
-                              name: "Predicted Values",
                               marker: {
-                                color: "#00ff9d",
+                                color: C.gold,
                                 size: 10,
-                                opacity: 0.8,
-                                line: { color: "#fff", width: 0.5 },
+                                opacity: 0.85,
+                                line: { color: C.purple, width: 0.6 },
                               },
+                              name: "Predicted",
                             },
                             {
                               x: result.y_test,
                               y: result.y_test,
                               mode: "lines",
-                              name: "Actual Values (y=x)",
-                              line: {
-                                color: "#ffff00",
-                                dash: "dash",
-                                width: 3,
-                              },
+                              line: { color: C.purple, dash: "dash", width: 3 },
+                              name: "y = x",
                             },
                           ]
                         : [
@@ -843,51 +885,38 @@ const XGBoost = ({ onClose }) => {
                               y: result.residuals,
                               mode: "markers",
                               type: "scatter",
-                              name: "Residuals",
                               marker: {
-                                color: "#ff6363",
+                                color: C.purple,
                                 size: 10,
-                                opacity: 0.8,
-                                line: { color: "#fff", width: 0.5 },
+                                opacity: 0.85,
                               },
+                              name: "Residuals",
                             },
                             {
                               x: result.preds,
                               y: Array(result.preds?.length).fill(0),
                               mode: "lines",
-                              name: "Zero Line (Perfect Model)",
-                              line: {
-                                color: "#ffff00",
-                                dash: "dash",
-                                width: 3,
-                              },
+                              line: { color: C.purple, dash: "dash", width: 3 },
+                              name: "Zero Line",
                             },
                           ]
                 }
                 layout={{
                   ...plotLayoutBase,
-                  title: "",
                   xaxis: {
                     title: {
                       text:
                         fullscreenGraph === "importance"
                           ? "Features"
                           : fullscreenGraph === "residuals"
-                            ? "Residual Value"
+                            ? "Residual"
                             : fullscreenGraph === "actual_pred"
-                              ? "Actual Values (Observed)"
-                              : "Predicted Values (Model Output)",
-                      font: {
-                        color:
-                          fullscreenGraph === "resid_pred"
-                            ? "#ff6363"
-                            : "#00ff9d",
-                        size: 16,
-                        weight: "bold",
-                      },
+                              ? "Actual"
+                              : "Predicted",
+                      font: { color: C.purple, size: 16, weight: "bold" },
                     },
-                    color: "#ccc",
-                    gridcolor: "#333",
+                    color: C.purple,
+                    gridcolor: "#E2E3EA",
                   },
                   yaxis: {
                     title: {
@@ -897,67 +926,23 @@ const XGBoost = ({ onClose }) => {
                           : fullscreenGraph === "residuals"
                             ? "Frequency"
                             : fullscreenGraph === "actual_pred"
-                              ? "Predicted Values (Model Output)"
-                              : "Residuals (Actual - Predicted)",
-                      font: {
-                        color:
-                          fullscreenGraph === "resid_pred"
-                            ? "#ff6363"
-                            : "#00ff9d",
-                        size: 16,
-                        weight: "bold",
-                      },
+                              ? "Predicted"
+                              : "Residuals",
+                      font: { color: C.purple, size: 16, weight: "bold" },
                     },
-                    color: "#ccc",
-                    gridcolor: "#333",
+                    color: C.purple,
+                    gridcolor: "#E2E3EA",
                   },
                   legend: {
                     x: 0.05,
                     y: 0.95,
                     xanchor: "left",
                     yanchor: "top",
-                    bgcolor: "rgba(0,0,0,0.8)",
-                    bordercolor:
-                      fullscreenGraph === "resid_pred" ? "#ff6363" : "#00ff9d",
-                    borderwidth: 2,
-                    font: { color: "#fff", size: 14 },
+                    bgcolor: "rgba(245,246,250,0.9)",
+                    bordercolor: "rgba(75,31,120,0.3)",
+                    borderwidth: 1,
+                    font: { color: C.purple, size: 14 },
                   },
-                  annotations:
-                    fullscreenGraph === "actual_pred"
-                      ? [
-                          {
-                            text: "Points closer to the line = Better predictions",
-                            xref: "paper",
-                            yref: "paper",
-                            x: 0.5,
-                            y: -0.12,
-                            showarrow: false,
-                            font: {
-                              color: "#00ff9d",
-                              size: 13,
-                              style: "italic",
-                            },
-                            xanchor: "center",
-                          },
-                        ]
-                      : fullscreenGraph === "resid_pred"
-                        ? [
-                            {
-                              text: "Random scatter around zero = Good model fit",
-                              xref: "paper",
-                              yref: "paper",
-                              x: 0.5,
-                              y: -0.12,
-                              showarrow: false,
-                              font: {
-                                color: "#ff6363",
-                                size: 13,
-                                style: "italic",
-                              },
-                              xanchor: "center",
-                            },
-                          ]
-                        : [],
                 }}
                 config={plotConfig(`${fullscreenGraph}_full`)}
                 useResizeHandler
@@ -968,70 +953,73 @@ const XGBoost = ({ onClose }) => {
         </div>
       )}
 
-      {/* === Run Model Modal === */}
+      {/* Run Saved Model Modal */}
       {showRunModal && (
         <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[10000]"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10000]"
           onClick={() => setShowRunModal(false)}
         >
           <div
-            className="bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white rounded-2xl shadow-2xl border border-green-500/30 w-full max-w-lg p-6"
+            className="rounded-2xl w-full max-w-lg p-6 border"
             onClick={(e) => e.stopPropagation()}
+            style={{
+              background: C.offwhite,
+              borderColor: "rgba(75,31,120,0.2)",
+              color: C.purple,
+            }}
           >
-            <h4 className="text-xl font-bold text-green-400 mb-4">
+            <h4 className="text-lg font-semibold mb-4">
               Run Saved XGBoost Model
             </h4>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-green-400 mb-2">
+                <label className="block text-sm font-medium mb-2">
                   Upload Model (.pkl)
                 </label>
                 <input
                   type="file"
                   accept=".pkl"
-                  onChange={(e) => setModelFile(e.target.files[0])}
-                  className="w-full bg-black/40 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-green-600 file:text-white file:cursor-pointer hover:file:bg-green-500 transition"
+                  onChange={(e) => setModelFile(e.target.files?.[0] || null)}
+                  className={`w-full rounded-lg px-3 py-2 border ${ring} ${trans} hover:brightness-105`}
+                  style={{
+                    background: C.offwhite,
+                    borderColor: "rgba(75,31,120,0.25)",
+                    color: C.purple,
+                  }}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-green-400 mb-2">
+                <label className="block text-sm font-medium mb-2">
                   Data Upload Method
                 </label>
                 <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      setRunUploadMode("shapefile");
-                      setRunZipFile(null);
-                    }}
-                    className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all duration-200 ${
-                      runUploadMode === "shapefile"
-                        ? "bg-green-600 text-white shadow-lg shadow-green-500/50"
-                        : "bg-gray-800 text-gray-400 hover:bg-gray-700"
-                    }`}
-                  >
-                    📄 Shapefile
-                  </button>
-                  <button
-                    onClick={() => {
-                      setRunUploadMode("zip");
-                      setRunFiles([]);
-                    }}
-                    className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all duration-200 ${
-                      runUploadMode === "zip"
-                        ? "bg-green-600 text-white shadow-lg shadow-green-500/50"
-                        : "bg-gray-800 text-gray-400 hover:bg-gray-700"
-                    }`}
-                  >
-                    📦 ZIP
-                  </button>
+                  {["shapefile", "zip"].map((mode) => (
+                    <button
+                      key={mode}
+                      onClick={() => {
+                        setRunUploadMode(mode);
+                        if (mode === "zip") setRunFiles([]);
+                        else setRunZipFile(null);
+                      }}
+                      className={`${btnGhost} flex-1`}
+                      style={{
+                        background:
+                          runUploadMode === mode ? C.purple : C.offwhite,
+                        color: runUploadMode === mode ? C.offwhite : C.purple,
+                        borderColor: "rgba(75,31,120,0.25)",
+                      }}
+                    >
+                      {mode === "shapefile" ? "📄 Shapefile" : "📦 ZIP"}
+                    </button>
+                  ))}
                 </div>
               </div>
 
               {runUploadMode === "shapefile" ? (
                 <div>
-                  <label className="block text-sm font-medium text-green-400 mb-2">
+                  <label className="block text-sm font-medium mb-2">
                     Upload Shapefile
                   </label>
                   <input
@@ -1040,25 +1028,32 @@ const XGBoost = ({ onClose }) => {
                     multiple
                     accept=".shp,.dbf,.shx,.prj"
                     className="hidden"
-                    onChange={(e) => setRunFiles(Array.from(e.target.files))}
+                    onChange={(e) =>
+                      setRunFiles(Array.from(e.target.files || []))
+                    }
                   />
                   <button
                     onClick={() =>
                       document.getElementById("runShpInput").click()
                     }
-                    className="w-full bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-medium transition-all duration-200"
+                    className={`${btnAccent} w-full`}
+                    style={{
+                      background: C.gold,
+                      color: C.purple,
+                      borderColor: "rgba(75,31,120,0.25)",
+                    }}
                   >
                     📂 Select Files
                   </button>
-                  {runFiles.length > 0 && (
-                    <p className="text-xs text-gray-400 mt-2">
+                  {!!runFiles.length && (
+                    <p className="text-xs mt-2 opacity-80">
                       {runFiles.length} file(s) selected
                     </p>
                   )}
                 </div>
               ) : (
                 <div>
-                  <label className="block text-sm font-medium text-green-400 mb-2 ">
+                  <label className="block text-sm font-medium mb-2">
                     Upload ZIP File
                   </label>
                   <input
@@ -1066,20 +1061,23 @@ const XGBoost = ({ onClose }) => {
                     id="runZipInput"
                     accept=".zip"
                     className="hidden"
-                    onChange={(e) => setRunZipFile(e.target.files[0])}
+                    onChange={(e) => setRunZipFile(e.target.files?.[0] || null)}
                   />
                   <button
                     onClick={() =>
                       document.getElementById("runZipInput").click()
                     }
-                    className="w-full bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-medium transition-all duration-200"
+                    className={`${btnAccent} w-full`}
+                    style={{
+                      background: C.gold,
+                      color: C.purple,
+                      borderColor: "rgba(75,31,120,0.25)",
+                    }}
                   >
                     📦 Select ZIP
                   </button>
                   {runZipFile && (
-                    <p className="text-xs text-gray-400 mt-2">
-                      {runZipFile.name}
-                    </p>
+                    <p className="text-xs mt-2 opacity-80">{runZipFile.name}</p>
                   )}
                 </div>
               )}
@@ -1088,7 +1086,12 @@ const XGBoost = ({ onClose }) => {
                 <button
                   onClick={handleRunModel}
                   disabled={loading}
-                  className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-semibold py-2.5 rounded-lg transition-all duration-200 shadow-lg hover:shadow-green-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className={`${btnAccent} flex-1 disabled:opacity-50`}
+                  style={{
+                    background: C.gold,
+                    color: C.purple,
+                    borderColor: "rgba(75,31,120,0.25)",
+                  }}
                 >
                   {loading ? "Running..." : "Run"}
                 </button>
@@ -1099,7 +1102,12 @@ const XGBoost = ({ onClose }) => {
                     setRunFiles([]);
                     setRunZipFile(null);
                   }}
-                  className="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2.5 rounded-lg transition-all duration-200"
+                  className={`${btnPrimary} flex-1`}
+                  style={{
+                    background: C.purple,
+                    color: C.offwhite,
+                    borderColor: "rgba(75,31,120,0.25)",
+                  }}
                 >
                   Cancel
                 </button>
@@ -1109,7 +1117,7 @@ const XGBoost = ({ onClose }) => {
         </div>
       )}
 
-      {/* Predicted Map Modal */}
+      {/* Map preview */}
       {showPredictedMap && (
         <PredictedMapModal
           onClose={() => setShowPredictedMap(false)}
