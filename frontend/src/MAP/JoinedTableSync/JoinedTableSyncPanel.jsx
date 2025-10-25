@@ -10,19 +10,38 @@ const JoinedTableSyncPanel = ({ isVisible, onClose }) => {
   const [host, setHost] = useState("");
   const [port, setPort] = useState("");
   const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [isConfiguring, setIsConfiguring] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  // 🧩 Auto-fetch provincial DB name
+  // ======================================================
+  // 🔹 Load actual connected DB name once when panel opens
+  // ======================================================
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (window._schemaSelectorData?.userAccess?.provincial) {
-        setDbName(window._schemaSelectorData.userAccess.provincial);
+    const fetchDbName = async () => {
+      try {
+        const data = window._schemaSelectorData;
+        if (data?.userAccess?.actual_dbname) {
+          setDbName(data.userAccess.actual_dbname);
+          return;
+        }
+        const res = await ApiService.get("/list-schemas");
+        if (res?.user_access?.actual_dbname) {
+          setDbName(res.user_access.actual_dbname);
+        } else if (data?.userAccess?.provincial) {
+          setDbName(data.userAccess.provincial);
+        }
+      } catch (err) {
+        console.error("❌ Error fetching actual DB name:", err);
       }
-    }, 300);
-    return () => clearInterval(interval);
-  }, []);
+    };
 
+    if (isVisible) fetchDbName();
+  }, [isVisible]);
+
+  // ======================================================
   // 🔹 Load saved credentials
+  // ======================================================
   const fetchCreds = async (targetSchema) => {
     if (!targetSchema) return;
     try {
@@ -31,28 +50,25 @@ const JoinedTableSyncPanel = ({ isVisible, onClose }) => {
         setHost(res.host || "");
         setPort(res.port || "");
         setUsername(res.username || "");
+        setPassword(res.password || "");
       } else {
         setHost("");
         setPort("");
         setUsername("");
+        setPassword("");
       }
     } catch (err) {
       console.error("Error fetching sync config:", err);
     }
   };
 
-  // 🔹 Auto-load when schema changes
-  useEffect(() => {
-    if (isVisible && isConfiguring && schema) {
-      fetchCreds(schema);
-    }
-  }, [schema, isVisible, isConfiguring]);
-
+  // ======================================================
   // 🔹 Save credentials
+  // ======================================================
   const handleSave = async () => {
     if (!schema) return;
     try {
-      const payload = { schema, host, port, username };
+      const payload = { schema, host, port, username, password };
       await ApiService.post("/sync-config", payload);
       alert("✅ Credentials saved successfully.");
     } catch (err) {
@@ -61,15 +77,36 @@ const JoinedTableSyncPanel = ({ isVisible, onClose }) => {
     }
   };
 
-  // 🔹 Placeholder push/pull
-  const handlePush = () => alert("🚀 Push action triggered (placeholder).");
-  const handlePull = () => alert("⬇️ Pull action triggered (placeholder).");
+  // ======================================================
+  // 🔹 Push only pin, bounds, computed_area
+  // ======================================================
+  const handlePush = async () => {
+    if (!schema) return alert("⚠️ No schema selected.");
+    setLoading(true);
+    try {
+      const res = await ApiService.post("/sync-push", { schema });
+      if (res?.status === "success") {
+        alert(`✅ ${res.message}`);
+      } else {
+        alert(`⚠️ ${res?.message || "Push failed."}`);
+      }
+    } catch (err) {
+      console.error("❌ Push error:", err);
+      alert("❌ Push failed. See console for details.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePull = () => alert("⬇️ Pull action coming soon...");
 
   if (!isVisible) return null;
 
+  // ======================================================
+  // 🔹 Render UI
+  // ======================================================
   return (
     <div className="sync-panel">
-      {/* Header */}
       <div className="sync-header">
         <h3 className="sync-title">RPT-GIS Sync Tool</h3>
         <button onClick={onClose} className="sync-close-btn">
@@ -77,12 +114,11 @@ const JoinedTableSyncPanel = ({ isVisible, onClose }) => {
         </button>
       </div>
 
-      {/* === INITIAL VIEW === */}
       {!isConfiguring ? (
         <div className="sync-placeholder">
           <div className="sync-main-buttons">
-            <button className="sync-btn push" onClick={handlePush}>
-              <Upload size={14} /> Update RPT
+            <button className="sync-btn push" onClick={handlePush} disabled={loading}>
+              <Upload size={14} /> {loading ? "Pushing..." : "Update RPT"}
             </button>
             <button className="sync-btn pull" onClick={handlePull}>
               <Download size={14} /> Update GIS
@@ -100,7 +136,6 @@ const JoinedTableSyncPanel = ({ isVisible, onClose }) => {
         </div>
       ) : (
         <>
-          {/* === CONFIGURATION VIEW === */}
           <div className="sync-box">
             <div>
               <label>Host</label>
@@ -133,6 +168,16 @@ const JoinedTableSyncPanel = ({ isVisible, onClose }) => {
             </div>
 
             <div>
+              <label>Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+              />
+            </div>
+
+            <div>
               <label>Database</label>
               <input type="text" value={dbName || ""} readOnly />
             </div>
@@ -143,12 +188,8 @@ const JoinedTableSyncPanel = ({ isVisible, onClose }) => {
             </div>
           </div>
 
-          {/* === ACTION BUTTONS === */}
           <div className="sync-actions">
-            <button
-              onClick={() => setIsConfiguring(false)}
-              className="sync-back-btn"
-            >
+            <button onClick={() => setIsConfiguring(false)} className="sync-back-btn">
               <ArrowLeft size={14} /> Back
             </button>
             <button onClick={handleSave} className="sync-save-btn prominent">
