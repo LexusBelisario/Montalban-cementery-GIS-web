@@ -1,3 +1,4 @@
+// SchemaSelector.jsx
 import { useState, useEffect, useRef } from "react";
 import { ApiService } from "../../api_service.js";
 import { useSchema } from "../SchemaContext";
@@ -11,7 +12,14 @@ const SchemaSelector = () => {
   const [error, setError] = useState(null);
   const { setSchema } = useSchema();
   const map = useMap();
-  const hasZoomedToProvince = useRef(false); // ✅ ensure province zoom only happens once
+  const hasZoomedToProvince = useRef(false);
+  const hasAutoSelected = useRef(false);
+
+  const normalize = (s) =>
+    (s ?? "")
+      .toString()
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
 
   // ======================================================
   // 🔹 Helper: Fetch and zoom to provincial bounds
@@ -60,15 +68,46 @@ const SchemaSelector = () => {
             hasZoomedToProvince.current = true;
           }
 
-          // ❌ Do NOT auto-select even if only one schema — wait for user click
-          if (data.schemas.length === 1) {
-            console.log("⚠️ Only one schema found. Waiting for manual selection.");
+          // --- Resolve municipal access from either key ---
+          const municipalAccessRaw =
+            data.user_access?.municipal_access ?? data.user_access?.municipal ?? "";
+          const municipalAccess = municipalAccessRaw.toString().trim();
+          const isAllAccess = /^all$/i.test(municipalAccess);
+
+          console.log("👤 User Access:", data.user_access);
+          console.log("📊 Number of schemas:", data.schemas.length);
+          console.log("🏘️ Municipal Access (resolved):", municipalAccess);
+          console.log("🔐 Is 'All' Access?", isAllAccess);
+
+          // ✅ Auto-select ONLY when municipal access is specific (not 'All')
+          if (!hasAutoSelected.current && !isAllAccess && data.schemas.length > 0) {
+            const accessKey = normalize(municipalAccess); // e.g., "ph0403406calauan" or "ph0403406"
+            const targetSchema =
+              data.schemas.find((s) => normalize(s).startsWith(accessKey)) ||
+              data.schemas.find((s) => normalize(s).startsWith(accessKey.slice(0, 9))) || // try pure code "ph0403406"
+              null;
+
+            if (targetSchema) {
+              console.log(`✅ Auto-selecting schema for municipal access: ${targetSchema}`);
+              setSelectedSchema(targetSchema);
+              setSchema(targetSchema);
+              hasAutoSelected.current = true;
+            } else {
+              console.log("⚠️ No matching schema found for municipal access:", municipalAccess);
+            }
+          } else if (isAllAccess && data.schemas.length === 1) {
+            // 🚫 Do not auto-select when 'All' even if only one schema
+            console.log("⏸️ 'All' access with one schema — waiting for manual selection.");
+          } else if (data.schemas.length > 1) {
+            console.log("⏸️ Multiple schemas available — waiting for manual selection.");
           }
 
-          // 🚫 Handle empty schema list
-          if (data.schemas.length === 0 && data.user_access?.provincial_access) {
+          // 🚫 Handle empty schema list (tolerant provincial key)
+          const provincialAccess =
+            data.user_access?.provincial_access ?? data.user_access?.provincial;
+          if (data.schemas.length === 0 && provincialAccess) {
             setError(
-              `You have access to ${data.user_access.provincial_access} but no municipal access assigned.`
+              `You have access to ${provincialAccess} but no municipal access assigned.`
             );
           }
         }
@@ -92,6 +131,7 @@ const SchemaSelector = () => {
   // 🔹 Handle schema change (user selection)
   // ======================================================
   const handleSchemaChange = (schema) => {
+    console.log("🔄 Manual schema change:", schema);
     setSelectedSchema(schema);
     setSchema(schema);
   };
@@ -104,6 +144,7 @@ const SchemaSelector = () => {
 
     const fetchBoundsAndZoom = async () => {
       try {
+        console.log("📍 Fetching bounds for schema:", selectedSchema);
         const res = await ApiService.get(`/municipal-bounds?schema=${selectedSchema}`);
         if (res?.status === "success" && Array.isArray(res.bounds) && res.bounds.length === 4) {
           const [xmin, ymin, xmax, ymax] = res.bounds;
