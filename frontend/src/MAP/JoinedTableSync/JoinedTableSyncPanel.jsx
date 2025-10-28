@@ -13,6 +13,7 @@ const JoinedTableSyncPanel = ({ isVisible, onClose }) => {
   const [password, setPassword] = useState("");
   const [isConfiguring, setIsConfiguring] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [pulling, setPulling] = useState(false);
 
   // ======================================================
   // 🔹 Load actual connected DB name once when panel opens
@@ -78,7 +79,7 @@ const JoinedTableSyncPanel = ({ isVisible, onClose }) => {
   };
 
   // ======================================================
-  // 🔹 Push only pin, bounds, computed_area
+  // 🔹 Push only pin, bounds, computed_area → RPIS
   // ======================================================
   const handlePush = async () => {
     if (!schema) return alert("⚠️ No schema selected.");
@@ -98,7 +99,26 @@ const JoinedTableSyncPanel = ({ isVisible, onClose }) => {
     }
   };
 
-  const handlePull = () => alert("⬇️ Pull action coming soon...");
+  // ======================================================
+  // 🔹 Pull all columns except pin/bounds/computed_area ← RPIS
+  // ======================================================
+  const handlePull = async () => {
+    if (!schema) return alert("⚠️ No schema selected.");
+    setPulling(true);
+    try {
+      const res = await ApiService.post("/sync-pull", { schema });
+      if (res?.status === "success") {
+        alert(`✅ ${res.message}`);
+      } else {
+        alert(`⚠️ ${res?.message || "Pull failed."}`);
+      }
+    } catch (err) {
+      console.error("❌ Pull error:", err);
+      alert("❌ Pull failed. See console for details.");
+    } finally {
+      setPulling(false);
+    }
+  };
 
   if (!isVisible) return null;
 
@@ -117,12 +137,17 @@ const JoinedTableSyncPanel = ({ isVisible, onClose }) => {
       {!isConfiguring ? (
         <div className="sync-placeholder">
           <div className="sync-main-buttons">
+            {/* 🔼 Push to RPIS */}
             <button className="sync-btn push" onClick={handlePush} disabled={loading}>
               <Upload size={14} /> {loading ? "Pushing..." : "Update RPT"}
             </button>
-            <button className="sync-btn pull" onClick={handlePull}>
-              <Download size={14} /> Update GIS
+
+            {/* 🔽 Pull from RPIS */}
+            <button className="sync-btn pull" onClick={handlePull} disabled={pulling}>
+              <Download size={14} /> {pulling ? "Updating..." : "Update GIS"}
             </button>
+
+            {/* ⚙️ Configure Connection */}
             <button
               className="sync-btn configure"
               onClick={() => {
