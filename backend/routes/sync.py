@@ -79,11 +79,14 @@ async def save_sync_config(request: Request, db: Session = Depends(get_user_main
 
 
 # ============================================================
-# 🔹 3. PUSH — Send only pin, bounds, computed_area
+# 🔹 3. PUSH — Match by ID (fixes PIN rename problem)
 # ============================================================
 @router.post("/sync-push")
 async def sync_push(request: Request, db: Session = Depends(get_user_main_db)):
-    """Push only 'pin', 'bounds', and 'computed_area' columns from GIS → RPIS."""
+    """
+    Push 'id', 'pin', 'bounds', 'computed_area' from GIS → RPIS.
+    Uses 'id' as the matching key to handle renamed PINs safely.
+    """
     data = await request.json()
     schema = data.get("schema")
     if not schema:
@@ -101,19 +104,27 @@ async def sync_push(request: Request, db: Session = Depends(get_user_main_db)):
         if not creds:
             raise HTTPException(status_code=400, detail=f"No SyncCreds found for {schema}")
 
-        target_host, target_port = creds["host"], creds["port"]
-        target_user, target_pass = creds["username"], creds["password"] or ""
+        target_host = creds["host"]
+        target_port = creds["port"]
+        target_user = creds["username"]
+        target_pass = creds["password"] or ""
         target_dbname = current_db
+        target_schema = schema
 
+        print(f"🔗 Target: {target_user}@{target_host}:{target_port}/{target_dbname} → {target_schema}.JoinedTable")
+
+        # === Fetch GIS data (now includes ID)
         rows = db.execute(text(f"""
-            SELECT pin, bounds, computed_area
+            SELECT id, pin, bounds, computed_area
             FROM "{schema}"."JoinedTable"
             WHERE pin IS NOT NULL
-        """)).mappings().all()
+        """)).fetchall()
         if not rows:
             return {"status": "empty", "message": "No data found in JoinedTable"}
 
-        print(f"📦 Pushing {len(rows)} rows to RPIS {schema}.JoinedTable")
+        print(f"📦 Retrieved {len(rows)} rows from GIS.{schema}.JoinedTable")
+
+        # === Connect to RPIS
         with psycopg.connect(
             dbname=target_dbname,
             user=target_user,
@@ -122,33 +133,77 @@ async def sync_push(request: Request, db: Session = Depends(get_user_main_db)):
             port=target_port
         ) as conn:
             with conn.cursor() as cur:
-                for row in rows:
-                    cur.execute(f"""
-                        INSERT INTO "{schema}"."JoinedTable" (pin, bounds, computed_area)
-                        VALUES (%s, %s, %s)
-                        ON CONFLICT (pin)
-                        DO UPDATE SET
-                            bounds = EXCLUDED.bounds,
-                            computed_area = EXCLUDED.computed_area;
-                    """, (row["pin"], row["bounds"], row["computed_area"]))
-            conn.commit()
+                # 1️⃣ Drop and recreate staging table
+                cur.execute(f'DROP TABLE IF EXISTS "{target_schema}"."_push_staging";')
+                cur.execute(f"""
+                    CREATE TABLE "{target_schema}"."_push_staging" (
+                        id INTEGER,
+                        pin TEXT,
+                        bounds DOUBLE PRECISION,
+                        computed_area DOUBLE PRECISION
+                    );
+                """)
 
-        print(f"✅ Push complete for {len(rows)} records.")
-        return {"status": "success", "message": f"Pushed {len(rows)} records to RPIS successfully."}
+                # 2️⃣ Bulk insert GIS data
+                placeholders = ", ".join(["(%s, %s, %s, %s)"] * len(rows))
+                flat_values = [v for r in rows for v in (r[0], r[1], r[2], r[3])]
+                cur.execute(f"""
+                    INSERT INTO "{target_schema}"."_push_staging" (id, pin, bounds, computed_area)
+                    VALUES {placeholders};
+                """, flat_values)
+
+                # 3️⃣ Delete RPIS rows that no longer exist in GIS
+                cur.execute(f"""
+                    DELETE FROM "{target_schema}"."JoinedTable"
+                    WHERE id NOT IN (SELECT id FROM "{target_schema}"."_push_staging");
+                """)
+
+                # 4️⃣ Update existing RPIS rows (match by ID)
+                cur.execute(f"""
+                    UPDATE "{target_schema}"."JoinedTable" AS rpis
+                    SET
+                        pin = staging.pin,
+                        bounds = staging.bounds,
+                        computed_area = staging.computed_area
+                    FROM "{target_schema}"."_push_staging" AS staging
+                    WHERE rpis.id = staging.id;
+                """)
+
+                # 5️⃣ Insert new rows (new parcels)
+                cur.execute(f"""
+                    INSERT INTO "{target_schema}"."JoinedTable" (id, pin, bounds, computed_area)
+                    SELECT s.id, s.pin, s.bounds, s.computed_area
+                    FROM "{target_schema}"."_push_staging" s
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM "{target_schema}"."JoinedTable" r WHERE r.id = s.id
+                    );
+                """)
+
+                # 6️⃣ Drop staging
+                cur.execute(f'DROP TABLE IF EXISTS "{target_schema}"."_push_staging";')
+                conn.commit()
+
+        print(f"✅ Push complete — {len(rows)} records synced using ID match safely.")
+
+        return {
+            "status": "success",
+            "message": f"Pushed {len(rows)} records successfully using ID match.",
+            "count": len(rows)
+        }
+
     except Exception as e:
         print(f"❌ Error in /sync-push: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================
-# 🔹 4. PULL — Use staging table for fast, safe update
+# 🔹 4. PULL — Also use ID for updates
 # ============================================================
 @router.post("/sync-pull")
 async def sync_pull(request: Request, db: Session = Depends(get_user_main_db)):
     """
     Pull data from RPIS JoinedTable and update GIS JoinedTable.
-    Uses a permanent staging table "_rpis_staging" inside the schema.
-    Excludes: id, pin, bounds, computed_area, geom.
+    Uses 'id' for matching so renamed PINs sync correctly.
     """
     data = await request.json()
     schema = data.get("schema")
@@ -157,7 +212,7 @@ async def sync_pull(request: Request, db: Session = Depends(get_user_main_db)):
 
     try:
         current_db = db.execute(text("SELECT current_database()")).scalar()
-        print(f"⬇️ PULL with staging triggered for {current_db}.{schema}")
+        print(f"⬇️ PULL triggered for {current_db}.{schema}")
 
         creds = db.execute(text(f"""
             SELECT host, port, username, password
@@ -171,8 +226,6 @@ async def sync_pull(request: Request, db: Session = Depends(get_user_main_db)):
         rpis_user, rpis_pass = creds["username"], creds["password"] or ""
         rpis_db = current_db
 
-        # === 1️⃣ Fetch data from RPIS
-        print(f"🔗 Connecting to RPIS {rpis_user}@{rpis_host}:{rpis_port}/{rpis_db}")
         with psycopg.connect(
             dbname=rpis_db,
             user=rpis_user,
@@ -191,7 +244,7 @@ async def sync_pull(request: Request, db: Session = Depends(get_user_main_db)):
                 cols_to_update = [c for c in all_cols if c not in excluded]
                 col_list = ", ".join(f'"{c}"' for c in all_cols)
 
-                cur.execute(f'SELECT {col_list} FROM "{schema}"."JoinedTable" WHERE pin IS NOT NULL')
+                cur.execute(f'SELECT {col_list} FROM "{schema}"."JoinedTable" WHERE id IS NOT NULL')
                 rows = cur.fetchall()
                 colnames = [desc[0] for desc in cur.description]
 
@@ -200,7 +253,6 @@ async def sync_pull(request: Request, db: Session = Depends(get_user_main_db)):
 
         print(f"📦 Retrieved {len(rows)} rows from RPIS.{schema}.JoinedTable")
 
-        # === 2️⃣ Create or clear staging table
         db.execute(text(f"""
             CREATE TABLE IF NOT EXISTS "{schema}"."_rpis_staging"
             (LIKE "{schema}"."JoinedTable" INCLUDING ALL);
@@ -208,37 +260,31 @@ async def sync_pull(request: Request, db: Session = Depends(get_user_main_db)):
         db.execute(text(f'TRUNCATE TABLE "{schema}"."_rpis_staging";'))
         db.commit()
 
-        # === 3️⃣ Bulk insert RPIS rows into staging table
         conn = db.connection().connection
         with conn.cursor() as cur:
             col_list_str = ", ".join(f'"{c}"' for c in colnames)
-            value_chunks = [
-                cur.mogrify("(" + ",".join(["%s"] * len(colnames)) + ")", tuple(r)).decode("utf-8")
-                for r in rows
-            ]
-            args_str = ",".join(value_chunks)
-            cur.execute(f'INSERT INTO "{schema}"."_rpis_staging" ({col_list_str}) VALUES {args_str}')
+            placeholders = ", ".join(["(" + ",".join(["%s"] * len(colnames)) + ")"] * len(rows))
+            flat_values = [v for row in rows for v in row]
+            cur.execute(f'INSERT INTO "{schema}"."_rpis_staging" ({col_list_str}) VALUES {placeholders}', flat_values)
             conn.commit()
 
-        # === 4️⃣ Bulk update GIS from staging
         set_clause = ", ".join([f'"{c}" = staging."{c}"' for c in cols_to_update])
         db.execute(text(f"""
             UPDATE "{schema}"."JoinedTable" AS gis
             SET {set_clause}
             FROM "{schema}"."_rpis_staging" AS staging
-            WHERE gis.pin = staging.pin;
+            WHERE gis.id = staging.id;
         """))
         db.commit()
 
-        print(f"✅ Pull complete — updated {len(rows)} records in GIS {schema}.JoinedTable")
-
-        # === 5️⃣ Optional: empty staging table for next use
         db.execute(text(f'TRUNCATE TABLE "{schema}"."_rpis_staging";'))
         db.commit()
 
+        print(f"✅ Pull complete — updated {len(rows)} GIS records using ID match.")
+
         return {
             "status": "success",
-            "message": f"Pulled {len(rows)} records into GIS using staging table.",
+            "message": f"Pulled {len(rows)} records successfully using ID match.",
             "updated": len(rows)
         }
 

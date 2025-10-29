@@ -5,8 +5,11 @@ export default function MapRefRegisterer() {
   const map = useMap();
 
   useEffect(() => {
-    window.map = map; // ✅ Register the global reference
-    console.log("✅ Leaflet map registered to window.map");
+    // ✅ Register both compatible globals for different tools
+    window.map = map;                     // Legacy compatibility (used by older tools)
+    window._leafletMapInstance = map;     // Standard global (used by sync + new UI)
+    
+    console.log("✅ Leaflet map registered globally (window.map & window._leafletMapInstance)");
   }, [map]);
 
   return null;

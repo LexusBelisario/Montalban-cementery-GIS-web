@@ -109,6 +109,20 @@ const JoinedTableSyncPanel = ({ isVisible, onClose }) => {
       const res = await ApiService.post("/sync-pull", { schema });
       if (res?.status === "success") {
         alert(`✅ ${res.message}`);
+
+        // === 🧭 Reload parcels after pull ===
+        if (typeof window.loadAllGeoTables === "function") {
+          console.log("🔁 Reloading parcels after pull...");
+          const mapInstance = window._leafletMapInstance || null;
+          if (mapInstance) {
+            await window.loadAllGeoTables(mapInstance, [schema]);
+            alert("✅ GIS parcels refreshed successfully!");
+          } else {
+            console.warn("⚠️ Map instance not found — parcels not reloaded.");
+          }
+        } else {
+          console.warn("⚠️ window.loadAllGeoTables() is not available.");
+        }
       } else {
         alert(`⚠️ ${res?.message || "Pull failed."}`);
       }
@@ -139,7 +153,7 @@ const JoinedTableSyncPanel = ({ isVisible, onClose }) => {
           <div className="sync-main-buttons">
             {/* 🔼 Push to RPIS */}
             <button className="sync-btn push" onClick={handlePush} disabled={loading}>
-              <Upload size={14} /> {loading ? "Pushing..." : "Update RPT"}
+              <Upload size={14} /> {loading ? "Uploading..." : "Update RPT"}
             </button>
 
             {/* 🔽 Pull from RPIS */}
