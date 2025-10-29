@@ -1,76 +1,4 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-import os
-import uvicorn
-
-from auth.routes import router as auth_router
-from admin.routes import router as admin_router 
-from routes.geomdisplay import router as geom_router
-from routes.schemas import router as schema_router
-from routes.parcelinfo import router as parcel_router
-from routes.edit import router as edit_router
-from routes.orthophoto import router as orthophoto_router
-from routes.consolidate import router as merge_router
-from routes.subdivide import router as subdivide_router
-from routes.thematic import router as thematic_router
-from routes.tableinfo import router as tableinfo_router
-from routes.landmarks import router as landmark_router
-from routes.search import router as search_router
-from routes.province import router as province_router
-from routes.municipal import router as municipal_router
-from routes.sync import router as sync_router          # ✅ Added sync.py router import
-from Predictive_Model_Tools.XGBoost.routes import router as ai_xgb_router
-from Predictive_Model_Tools import linear_regression as ai_linear_router
-
-
-
-app = FastAPI()
-
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
-)
-
-# Include routers ONLY ONCE with proper prefixes
-app.include_router(auth_router, prefix="/api")
-app.include_router(admin_router, prefix="/api")
-app.include_router(geom_router, prefix="/api")
-app.include_router(schema_router, prefix="/api")
-app.include_router(parcel_router, prefix="/api")
-app.include_router(orthophoto_router, prefix="/api")
-app.include_router(search_router, prefix="/api")
-app.include_router(edit_router, prefix="/api")
-app.include_router(merge_router, prefix="/api")
-app.include_router(subdivide_router, prefix="/api")
-app.include_router(landmark_router, prefix="/api")
-app.include_router(thematic_router, prefix="/api")
-app.include_router(tableinfo_router, prefix="/api")
-app.include_router(province_router, prefix="/api")
-app.include_router(municipal_router, prefix="/api")
-app.include_router(sync_router, prefix="/api")          # ✅ Register sync router here
-app.include_router(ai_linear_router.router, prefix="/api")
-app.include_router(ai_xgb_router, prefix="/api")
-
-
-@app.get("/health")
-def health():
-    return {"message": "API is up"}
-
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
-
-
-
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -93,13 +21,13 @@ from routes.landmarks import router as landmark_router
 from routes.search import router as search_router
 from routes.province import router as province_router
 from routes.municipal import router as municipal_router
-from routes.sync import router as sync_router           # ✅ Added sync.py router import here too
-from Predictive_Model_Tools import linear_regression as ai_linear_router
+from routes.sync import router as sync_router
+
+# === Predictive Model Tools ===
+from Predictive_Model_Tools.linear_regression import router as ai_linear_router
 from Predictive_Model_Tools.GWR.routes import router as ai_gwr_router
 from Predictive_Model_Tools.XGBoost.routes import router as ai_xgb_router
 from Predictive_Model_Tools.Spatial_Lag_Model.routes import router as ai_slm_router
-
-
 
 
 # ==========================================================
@@ -137,13 +65,11 @@ app.include_router(thematic_router, prefix="/api")
 app.include_router(tableinfo_router, prefix="/api")
 app.include_router(province_router, prefix="/api")
 app.include_router(municipal_router, prefix="/api")
-app.include_router(sync_router, prefix="/api")           # ✅ Register sync router here
-app.include_router(ai_linear_router.router, prefix="/api")
-app.include_router(ai_linear_router.router, prefix="/api")
+app.include_router(sync_router, prefix="/api")
+app.include_router(ai_linear_router, prefix="/api")
 app.include_router(ai_gwr_router, prefix="/api")
 app.include_router(ai_xgb_router, prefix="/api")
 app.include_router(ai_slm_router, prefix="/api")
-
 
 
 # ==========================================================
@@ -164,18 +90,15 @@ INDEX_HTML = os.path.join(STATIC_DIR, "index.html")
 
 
 # ==========================================================
-# 🧭 Fallback for React Router (only when not found)
+# 🧭 Fallback for React Router
 # ==========================================================
-from fastapi.requests import Request
-
 @app.middleware("http")
 async def react_fallback(request: Request, call_next):
-    # If request path looks like /map or /login and isn't API/static, serve React index.html
     if (
         not request.url.path.startswith("/api")
         and not request.url.path.startswith("/assets")
         and not request.url.path.startswith("/static")
-        and "." not in request.url.path  # skip files with extensions
+        and "." not in request.url.path
     ):
         if os.path.exists(INDEX_HTML):
             return FileResponse(INDEX_HTML)
