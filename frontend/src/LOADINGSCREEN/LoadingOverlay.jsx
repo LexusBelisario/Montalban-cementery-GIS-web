@@ -8,7 +8,7 @@ const LoadingOverlay = ({ visible }) => {
     <div className="loading-overlay">
       <div className="loading-content">
         <div className="spinner"></div>
-        <p>Loading...</p>
+        <p>Loading Parcels. Please Wait...</p>
       </div>
     </div>
   );
