@@ -7,7 +7,7 @@ import AdminBoundaries from "./AdminBoundaries/AdminBoundaries.jsx";
 import Orthophoto from "./Orthophoto/Orthophoto.jsx";
 import ParcelLoader from "./ParcelLoader";
 import LoadingHandler from "./LoadingHandler";
-import Toolbar from "./Toolbar/toolbar.jsx";
+// import Toolbar from "./Toolbar/toolbar.jsx";
 import { SchemaProvider } from "./SchemaContext.jsx";
 import CoordinatesDisplay from "./CoordinatesDisplay/CoordinatesDisplay.jsx";
 import MapRefRegisterer from "./MapRefRegister.jsx";
@@ -34,7 +34,7 @@ function MapView() {
         <CoordinatesDisplay />
 
         {/* 🧭 LEFT TOOLBAR (GIS Tools) */}
-        <Toolbar />
+        {/* <Toolbar /> */}
 
         {/* 🧩 RIGHT PANEL (Zoom + Tools) */}
         <RightControls activeTool={activeTool} setActiveTool={setActiveTool} />

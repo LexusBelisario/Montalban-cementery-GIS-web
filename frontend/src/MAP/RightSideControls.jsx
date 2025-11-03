@@ -139,7 +139,7 @@ function RightControls({ activeTool, setActiveTool }) {
         </div>
 
         {/* 🧩 Tool Buttons */}
-        <div className={panelClass}>
+        {/* <div className={panelClass}>
           <button
             onClick={() => toggleTool("schema")}
             className={`${buttonBase} ${activeTool === "schema" ? activeColor : hoverColor}`}
@@ -179,7 +179,7 @@ function RightControls({ activeTool, setActiveTool }) {
             <Paintbrush size={18} />
             <Tooltip text="Parcel Styling" />
           </button>
-        </div>
+        </div> */}
       </div>
 
       {/* 🧭 Tool Panels */}
